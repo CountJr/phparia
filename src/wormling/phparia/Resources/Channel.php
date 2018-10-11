@@ -427,12 +427,13 @@ class Channel extends Resource
         $this->client->channels()->deleteChannel($this->id);
     }
 
-    /**
-     * Hangup the channel if it still exists.
-     */
-    public function hangup()
+	/**
+	 * Hangup the channel if it still exists.
+	 * @param string $reason Allowed values: normal, busy, congestion, no_answer, answered_elsewhere
+	 */
+    public function hangup($reason = 'normal')
     {
-        $this->client->channels()->hangup($this->id);
+        $this->client->channels()->hangup($this->id, $reason);
     }
 
     /**
