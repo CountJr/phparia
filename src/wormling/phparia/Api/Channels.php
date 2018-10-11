@@ -215,13 +215,24 @@ class Channels extends MediaBase
      * Delete (i.e. hangup) a channel.
      *
      * @param string $channelId Channel's id
+     * @param string $reason
+     * @throws ConflictException
+     * @throws InvalidParameterException
      * @throws NotFoundException
+     * @throws PreconditionFailedException
+     * @throws ServerException
+     * @throws UnprocessableEntityException
+     * @throws \phparia\Exception\ForbiddenException
      */
-    public function deleteChannel($channelId)
-    {
+    public function deleteChannel($channelId, $reason = 'normal') {
         $uri = "channels/$channelId";
+        $options = [
+            'form_params' => [
+                'reason' => $reason,
+            ],
+        ];
         try {
-            $this->client->getEndpoint()->delete($uri);
+            $this->client->getEndpoint()->delete($uri, $options);
         } catch (RequestException $e) {
             $this->processRequestException($e);
         }
@@ -231,11 +242,11 @@ class Channels extends MediaBase
      * Hangup a channel if it still exists.
      *
      * @param string $channelId Channel's id
+     * @param string $reason
      */
-    public function hangup($channelId)
-    {
+    public function hangup($channelId, $reason = 'normal') {
         try {
-            $this->deleteChannel($channelId);
+            $this->deleteChannel($channelId, $reason);
         } catch (\Exception $ignore) {
             // Don't throw exception if the channel doesn't exist
         }
