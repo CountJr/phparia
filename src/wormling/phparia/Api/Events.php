@@ -68,18 +68,24 @@ class Events extends AriClientAware
      * @throws InvalidParameterException
      * @throws NotFoundException
      * @throws UnprocessableEntityException
+     * @throws \phparia\Exception\ConflictException
+     * @throws \phparia\Exception\ForbiddenException
+     * @throws \phparia\Exception\PreconditionFailedException
+     * @throws \phparia\Exception\ServerException
      */
-    public function createUserEvent($eventName, $application, $source, $variables = array())
-    {
+    public function createUserEvent($eventName, $application, $source = null, $variables = array()) {
         $uri = "events/user/$eventName";
+        $options = [
+            'form_params' => [
+                'application' => $application,
+                'variables' => array_map('strval', $variables),
+            ]
+        ];
+        if ($source) {
+            $options['form_params']['source'] = $source;
+        }
         try {
-            $this->client->getEndpoint()->post($uri, [
-                'form_params' => [
-                    'application' => $application,
-                    'source' => $source,
-                    'variables' => array_map('strval', $variables),
-                ]
-            ]);
+            $this->client->getEndpoint()->post($uri, $options);
         } catch (RequestException $e) {
             $this->processRequestException($e);
         }
