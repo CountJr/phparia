@@ -19,8 +19,9 @@
 namespace phparia\Examples;
 
 use phparia\Client\Phparia;
-use phparia\Events\ChannelDtmfReceived;
 use phparia\Events\StasisStart;
+use phparia\Exception\ServerException;
+use phparia\Resources\Bridge;
 use Symfony\Component\Yaml\Yaml;
 use Zend\Log;
 
@@ -31,23 +32,29 @@ ini_set('display_errors', 1);
 ini_set('xdebug.var_display_max_depth', 4);
 
 /**
+ * Example of dialing.
+ *
  * @author Brian Smith <wormling@gmail.com>
  */
-class RecordingExample
+class DialExample
 {
     /**
-     * Example of listening for DTMF input from a caller.
-     *
      * @var Phparia
      */
     public $client;
 
+    /**
+     * @var Bridge
+     */
+    private $bridge = null;
+
     public function __construct()
     {
-        $configFile = __DIR__.'/../config.yml';
+        $configFile = __DIR__ . '/../config.yml';
         $value = Yaml::parse(file_get_contents($configFile));
 
         $ariAddress = $value['examples']['client']['ari_address'];
+        $dialString = $value['examples']['dial_example']['dial_string'];
 
         $logger = new Log\Logger();
         $logWriter = new Log\Writer\Stream("php://output");
@@ -57,25 +64,30 @@ class RecordingExample
         $logWriter->addFilter($filter);
 
         // Connect to the ARI server
-        $client = new Phparia($logger);
-        $client->connect($ariAddress);
-        $this->client = $client;
-        $recordingFile = uniqid('recording_');
+        $this->client = new Phparia($logger);
+        $this->client->connect($ariAddress);
 
-        // Listen for the stasis start
-        $client->onStasisStart(function (StasisStart $event) use ($recordingFile) {
-            // Put the new channel in a bridge
-            $channel = $event->getChannel();
-            $bridge = $this->client->bridges()->createBridge(uniqid(), 'dtmf_events, mixing', 'bridgename');
-            $this->client->bridges()->addChannel($bridge->getId(), $channel->getId(), null);
-
-            $bridge->record($recordingFile, 'wav');
+        $this->client->getAriClient()->onConnect(function () use ($dialString) {
+            try {
+                $this->client->channels()->createChannel($dialString, null, null, null, null,
+                    $this->client->getStasisApplicationName(), 'dialed', '8185551212', 30, null, null, null,
+                    array('MYVARIABLE' => 'value'));
+            } catch (ServerException $e) {
+                $this->log($e->getMessage());
+            }
         });
 
-        $client->onStasisEnd(function (StatisEnd $event) use ($client, $recordingFile) {
-            $liveRecording = $client->recordings()->getLiveRecording($recordingFile);
-            $this->log("Got recording file: {$liveRecording->getName()}");
-            
+        // Listen for the stasis start
+        $this->client->onStasisStart(function (StasisStart $event) use ($dialString) {
+            if (count($event->getArgs()) > 0 && $event->getArgs()[0] === 'dialed') {
+                $this->log('Detected outgoing call with variable MYVARIABLE='.$event->getChannel()->getVariable('MYVARIABLE')->getValue());
+
+                // Put the new channel in a bridge
+                $channel = $event->getChannel();
+                $this->bridge = $this->client->bridges()->createBridge(uniqid(), 'dtmf_events, mixing',
+                    'dial_example_bridge');
+                $this->bridge->addChannel($channel->getId());
+            }
         });
 
         $this->client->run();
@@ -92,4 +104,4 @@ class RecordingExample
 
 }
 
-new RecordingExample();
+new DialExample();
