@@ -33,10 +33,10 @@ ini_set('xdebug.var_display_max_depth', 4);
 /**
  * @author Brian Smith <wormling@gmail.com>
  */
-class AriAmiExample
+class HangupExample
 {
     /**
-     * Example of creating a stasis app which also supports AMI events.
+     * Example of listening for DTMF input from a caller and hanging up when '#' is pressed.
      *
      * @var Phparia
      */
@@ -44,22 +44,21 @@ class AriAmiExample
 
     public function __construct()
     {
-        $configFile = __DIR__.'/../config.yml';
+        $configFile = __DIR__ . '/../config.yml';
         $value = Yaml::parse(file_get_contents($configFile));
 
         $ariAddress = $value['examples']['client']['ari_address'];
-        $amiAddress = $value['examples']['client']['ami_address'];
 
         $logger = new Log\Logger();
         $logWriter = new Log\Writer\Stream("php://output");
         $logger->addWriter($logWriter);
-        //$filter = new Log\Filter\SuppressFilter(true);
+        //$filter = new \Zend\Log\Filter\SuppressFilter(true);
         $filter = new Log\Filter\Priority(Log\Logger::NOTICE);
         $logWriter->addFilter($filter);
 
         // Connect to the ARI server
         $client = new Phparia($logger);
-        $client->connect($ariAddress, $amiAddress);
+        $client->connect($ariAddress);
         $this->client = $client;
 
         // Listen for the stasis start
@@ -75,10 +74,6 @@ class AriAmiExample
                 if ($event->getDigit() === '#') {
                     $channel->hangup();
                 }
-            });
-
-            $this->client->getWsClient()->on('Hangup', function ($event) {
-                $this->log('User hung up');
             });
         });
 
@@ -96,4 +91,4 @@ class AriAmiExample
 
 }
 
-new AriAmiExample();
+new HangupExample();

@@ -19,9 +19,8 @@
 namespace phparia\Examples;
 
 use phparia\Client\Phparia;
+use phparia\Events\ChannelDtmfReceived;
 use phparia\Events\StasisStart;
-use phparia\Exception\ServerException;
-use phparia\Resources\Bridge;
 use Symfony\Component\Yaml\Yaml;
 use Zend\Log;
 
@@ -32,62 +31,55 @@ ini_set('display_errors', 1);
 ini_set('xdebug.var_display_max_depth', 4);
 
 /**
- * Example of dialing.
- *
  * @author Brian Smith <wormling@gmail.com>
  */
-class DialExample
+class AriAmiExample
 {
     /**
+     * Example of creating a stasis app which also supports AMI events.
+     *
      * @var Phparia
      */
     public $client;
 
-    /**
-     * @var Bridge
-     */
-    private $bridge = null;
-
     public function __construct()
     {
-        $configFile = __DIR__.'/../config.yml';
+        $configFile = __DIR__ . '/../config.yml';
         $value = Yaml::parse(file_get_contents($configFile));
 
         $ariAddress = $value['examples']['client']['ari_address'];
-        $dialString = $value['examples']['dial_example']['dial_string'];
+        $amiAddress = $value['examples']['client']['ami_address'];
 
         $logger = new Log\Logger();
         $logWriter = new Log\Writer\Stream("php://output");
         $logger->addWriter($logWriter);
-        //$filter = new \Zend\Log\Filter\SuppressFilter(true);
+        //$filter = new Log\Filter\SuppressFilter(true);
         $filter = new Log\Filter\Priority(Log\Logger::NOTICE);
         $logWriter->addFilter($filter);
 
         // Connect to the ARI server
-        $this->client = new Phparia($logger);
-        $this->client->connect($ariAddress);
-
-        $this->client->getAriClient()->onConnect(function () use ($dialString) {
-            try {
-                $this->client->channels()->createChannel($dialString, null, null, null, null,
-                    $this->client->getStasisApplicationName(), 'dialed', '8185551212', 30, null, null, null,
-                    array('MYVARIABLE' => 'value'));
-            } catch (ServerException $e) {
-                $this->log($e->getMessage());
-            }
-        });
+        $client = new Phparia($logger);
+        $client->connect($ariAddress, $amiAddress);
+        $this->client = $client;
 
         // Listen for the stasis start
-        $this->client->onStasisStart(function (StasisStart $event) use ($dialString) {
-            if (count($event->getArgs()) > 0 && $event->getArgs()[0] === 'dialed') {
-                $this->log('Detected outgoing call with variable MYVARIABLE='.$event->getChannel()->getVariable('MYVARIABLE')->getValue());
+        $client->onStasisStart(function (StasisStart $event) {
+            // Put the new channel in a bridge
+            $channel = $event->getChannel();
+            $bridge = $this->client->bridges()->createBridge(uniqid(), 'dtmf_events, mixing', 'bridgename');
+            $this->client->bridges()->addChannel($bridge->getId(), $channel->getId());
 
-                // Put the new channel in a bridge
-                $channel = $event->getChannel();
-                $this->bridge = $this->client->bridges()->createBridge(uniqid(), 'dtmf_events, mixing',
-                    'dial_example_bridge');
-                $this->bridge->addChannel($channel->getId());
-            }
+            // Listen for DTMF and hangup when '#' is pressed
+            $channel->onChannelDtmfReceived(function (ChannelDtmfReceived $event) use ($channel) {
+                $this->log("Got digit: {$event->getDigit()}");
+                if ($event->getDigit() === '#') {
+                    $channel->hangup();
+                }
+            });
+
+            $this->client->getWsClient()->on('Hangup', function ($event) {
+                $this->log('User hung up');
+            });
         });
 
         $this->client->run();
@@ -104,4 +96,4 @@ class DialExample
 
 }
 
-new DialExample();
+new AriAmiExample();

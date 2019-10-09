@@ -33,10 +33,10 @@ ini_set('xdebug.var_display_max_depth', 4);
 /**
  * @author Brian Smith <wormling@gmail.com>
  */
-class HangupExample
+class RecordingExample
 {
     /**
-     * Example of listening for DTMF input from a caller and hanging up when '#' is pressed.
+     * Example of listening for DTMF input from a caller.
      *
      * @var Phparia
      */
@@ -44,7 +44,7 @@ class HangupExample
 
     public function __construct()
     {
-        $configFile = __DIR__.'/../config.yml';
+        $configFile = __DIR__ . '/../config.yml';
         $value = Yaml::parse(file_get_contents($configFile));
 
         $ariAddress = $value['examples']['client']['ari_address'];
@@ -60,21 +60,22 @@ class HangupExample
         $client = new Phparia($logger);
         $client->connect($ariAddress);
         $this->client = $client;
+        $recordingFile = uniqid('recording_');
 
         // Listen for the stasis start
-        $client->onStasisStart(function (StasisStart $event) {
+        $client->onStasisStart(function (StasisStart $event) use ($recordingFile) {
             // Put the new channel in a bridge
             $channel = $event->getChannel();
             $bridge = $this->client->bridges()->createBridge(uniqid(), 'dtmf_events, mixing', 'bridgename');
-            $this->client->bridges()->addChannel($bridge->getId(), $channel->getId());
+            $this->client->bridges()->addChannel($bridge->getId(), $channel->getId(), null);
 
-            // Listen for DTMF and hangup when '#' is pressed
-            $channel->onChannelDtmfReceived(function (ChannelDtmfReceived $event) use ($channel) {
-                $this->log("Got digit: {$event->getDigit()}");
-                if ($event->getDigit() === '#') {
-                    $channel->hangup();
-                }
-            });
+            $bridge->record($recordingFile, 'wav');
+        });
+
+        $client->onStasisEnd(function (StatisEnd $event) use ($client, $recordingFile) {
+            $liveRecording = $client->recordings()->getLiveRecording($recordingFile);
+            $this->log("Got recording file: {$liveRecording->getName()}");
+            
         });
 
         $this->client->run();
@@ -91,4 +92,4 @@ class HangupExample
 
 }
 
-new HangupExample();
+new RecordingExample();
